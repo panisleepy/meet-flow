@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,12 @@ import {
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
-import { Plus, Users, Calendar, User, CalendarCheck } from "lucide-react";
+import { Plus, Users, Calendar, User, CalendarCheck, Sparkles } from "lucide-react";
+import {
+  buildAllGridSlots,
+  findCommonFreeTime,
+  findTopGoldenSlots,
+} from "@/utils/analyzer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -232,11 +237,21 @@ export default function MeetFlow() {
   const others = members.filter((m) => m.id !== "me");
   const viewing = members.find((m) => m.id === viewId) ?? others[0];
 
-  const commonSlots = DAYS.flatMap((_, d) =>
-    HOURS.filter((h) =>
-      members.every((m) => m.availability.includes(slot(d, h)))
-    ).map((h) => slot(d, h))
+  const allGridSlots = useMemo(
+    () => buildAllGridSlots(DAYS.length, HOURS),
+    []
   );
+
+  const commonSlots = useMemo(
+    () => findCommonFreeTime(members),
+    [members]
+  );
+
+  const ceoGoldenSlots = useMemo(() => {
+    return findTopGoldenSlots(members, allGridSlots, allGridSlots.length)
+      .filter((g) => g.participantCount > 0)
+      .slice(0, 3);
+  }, [members, allGridSlots]);
 
   function batchToggleMySlots(slots: TimeSlot[], fill: boolean) {
     setMembers((prev) =>
@@ -475,6 +490,51 @@ export default function MeetFlow() {
                 ) : (
                   <ScheduleGrid availability={commonSlots} emerald />
                 )}
+
+                <div className="mt-8 pt-6 border-t border-border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <h3 className="text-sm font-semibold">CEO 智慧建議</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    依參與人數排序的前三名黃金時段（全員可開會的時段會列為首選）
+                  </p>
+                  {ceoGoldenSlots.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-2">
+                      目前沒有足夠資料可建議時段
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {ceoGoldenSlots.map((g, i) => {
+                        const [d, h] = g.slot.split("-").map(Number);
+                        return (
+                          <li
+                            key={g.slot}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2.5 text-sm"
+                          >
+                            <span className="font-medium">
+                              <span className="text-muted-foreground mr-2">
+                                {i + 1}.
+                              </span>
+                              {DAYS[d]} {h}:00–{h + 1}:00
+                            </span>
+                            <span className="flex items-center gap-2 shrink-0">
+                              {g.isFullAttendance ? (
+                                <Badge className="bg-emerald-600 hover:bg-emerald-600">
+                                  全員參與
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary">
+                                  {g.participantCount} 人可參與
+                                </Badge>
+                              )}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
